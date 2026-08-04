@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "cloudorch.fullname" . }}-manager-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudorch.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "cloudorch.fullname" . }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "cloudorch.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}

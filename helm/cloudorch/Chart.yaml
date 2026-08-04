@@ -1,0 +1,15 @@
+apiVersion: v2
+name: cloudorch
+description: CloudOrch — Kubernetes-Native Multi-Cloud Infrastructure Orchestration Engine
+type: application
+version: 0.1.0
+appVersion: v0.1.0
+keywords:
+  - kubernetes
+  - operator
+  - multi-cloud
+  - infrastructure
+  - terraform
+maintainers:
+  - name: CloudOrch Team
+    email: team@cloudorch.io

@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cloudorch.fullname" . }}-manager-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudorch.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["compute.cloudorch.io"]
+  resources: ["cloudclusters", "cloudclusters/status", "cloudclusters/finalizers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["data.cloudorch.io"]
+  resources: ["manageddatabases", "manageddatabases/status", "manageddatabases/finalizers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["network.cloudorch.io"]
+  resources: ["virtualnetworks", "virtualnetworks/status", "virtualnetworks/finalizers", "loadbalancers", "loadbalancers/status", "loadbalancers/finalizers", "dnszones", "dnszones/status", "dnszones/finalizers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["security.cloudorch.io"]
+  resources: ["securitypolicies", "securitypolicies/status", "securitypolicies/finalizers", "serviceaccounts", "serviceaccounts/status", "serviceaccounts/finalizers", "secretstores", "secretstores/status", "secretstores/finalizers"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

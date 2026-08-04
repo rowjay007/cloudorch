@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudorch.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cloudorch.labels" . | nindent 4 }}
+spec:
+  ports:
+  - name: webhook
+    port: {{ .Values.webhook.port }}
+    targetPort: {{ .Values.webhook.port }}
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "cloudorch.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
