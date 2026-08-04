@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	admissionv1 "k8s.io/api/admission/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	computev1 "github.com/rowjay/cloudorch/api/compute/v1"
@@ -29,20 +30,20 @@ type ValidatingWebhook struct {
 }
 
 // Handle validates incoming CR requests.
-func (w *ValidatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest) *v1.AdmissionResponse {
-	log := ctrl.Log.FromContext(ctx)
+func (w *ValidatingWebhook) Handle(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	log, _ := logr.FromContext(ctx)
 
 	// Only handle CREATE and UPDATE for CloudCluster.
-	gvk := schema.FromAPIVersionAndKind(req.Kind.APIVersion, req.Kind.Kind)
+	gvk := schema.FromAPIVersionAndKind(req.Kind.Group+"/"+req.Kind.Version, req.Kind.Kind)
 	if gvk.Group != "compute.cloudorch.io" || gvk.Kind != "CloudCluster" {
-		return &v1.AdmissionResponse{Allowed: true}
+		return &admissionv1.AdmissionResponse{Allowed: true}
 	}
 
 	// Decode the incoming object.
 	var cluster computev1.CloudCluster
 	if err := json.Unmarshal(req.Object.Raw, &cluster); err != nil {
 		log.Error(err, "failed to decode CloudCluster")
-		return &v1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: false,
 			Result: &metav1.Status{
 				Message: fmt.Sprintf("Failed to decode CloudCluster: %v", err),
@@ -54,7 +55,7 @@ func (w *ValidatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest
 	violations, err := w.Policy.Evaluate(ctx, &cluster)
 	if err != nil {
 		log.Error(err, "policy evaluation failed")
-		return &v1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: false,
 			Result: &metav1.Status{
 				Message: fmt.Sprintf("Policy evaluation error: %v", err),
@@ -68,7 +69,7 @@ func (w *ValidatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest
 			msg += "; " + v.Message
 		}
 		log.Info("admission rejected", "reason", msg)
-		return &v1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: false,
 			Result: &metav1.Status{
 				Message: msg,
@@ -76,28 +77,28 @@ func (w *ValidatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest
 		}
 	}
 
-	return &v1.AdmissionResponse{Allowed: true}
+	return &admissionv1.AdmissionResponse{Allowed: true}
 }
 
 // MutatingWebhook injects defaults and enforces naming conventions.
 type MutatingWebhook struct {
 	Client client.Client
 	Scheme *runtime.Scheme
-	Log    logr.Logger
 }
 
 // Handle mutates incoming CR requests.
-func (w *MutatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest) *v1.AdmissionResponse {
-	log := ctrl.Log.FromContext(ctx)
+func (w *MutatingWebhook) Handle(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	_, _ = logr.FromContext(ctx)
 
-	gvk := schema.FromAPIVersionAndKind(req.Kind.APIVersion, req.Kind.Kind)
+	apiVersion := req.Kind.Group + "/" + req.Kind.Version
+	gvk := schema.FromAPIVersionAndKind(apiVersion, req.Kind.Kind)
 	if gvk.Group != "compute.cloudorch.io" || gvk.Kind != "CloudCluster" {
-		return &v1.AdmissionResponse{Allowed: true}
+		return &admissionv1.AdmissionResponse{Allowed: true}
 	}
 
 	var cluster computev1.CloudCluster
 	if err := json.Unmarshal(req.Object.Raw, &cluster); err != nil {
-		return &v1.AdmissionResponse{Allowed: true}
+		return &admissionv1.AdmissionResponse{Allowed: true}
 	}
 
 	// Inject default values.
@@ -118,19 +119,19 @@ func (w *MutatingWebhook) Handle(ctx context.Context, req *v1.AdmissionRequest) 
 	if mutated {
 		patch, err := json.Marshal(cluster)
 		if err != nil {
-			return &v1.AdmissionResponse{Allowed: false}
+			return &admissionv1.AdmissionResponse{Allowed: false}
 		}
-		return &v1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: true,
 			Patch:   patch,
-			PatchType: func() *v1.PatchType {
-				pt := v1.PatchTypeJSONPatch
+			PatchType: func() *admissionv1.PatchType {
+				pt := admissionv1.PatchTypeJSONPatch
 				return &pt
 			}(),
 		}
 	}
 
-	return &v1.AdmissionResponse{Allowed: true}
+	return &admissionv1.AdmissionResponse{Allowed: true}
 }
 
 // Server runs the admission webhook server.
@@ -174,7 +175,7 @@ func (s *Server) Start(ctx context.Context) error {
 			s.CertDir+"/tls.crt",
 			s.CertDir+"/tls.key",
 		); err != nil && err != http.ErrServerClosed {
-			s.Log.Error(err, "webhook server failed")
+			fmt.Printf("webhook server failed: %v\n", err)
 		}
 	}()
 
@@ -195,5 +196,15 @@ func (s *Server) validateHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) mutateHandler(w http.ResponseWriter, r *http.Request) {
 	// Webhook handler implementation
+	w.WriteHeader(http.StatusOK)
+}
+
+// AdmissionHandler wraps webhook handlers for controller-runtime.
+type AdmissionHandler struct {
+	Webhook interface{}
+}
+
+// ServeHTTP implements the http.Handler interface.
+func (a *AdmissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }

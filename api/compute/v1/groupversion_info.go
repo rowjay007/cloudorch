@@ -9,17 +9,16 @@ import (
 var GroupVersion = schema.GroupVersion{Group: "compute.cloudorch.io", Version: "v1"}
 
 // SchemeBuilder registers addFuncs to the scheme.
-var SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
+var SchemeBuilder = runtime.NewSchemeBuilder()
 
 // AddToScheme adds the types in this group-version to the given scheme.
 func AddToScheme(scheme *runtime.Scheme) error {
 	return SchemeBuilder.AddToScheme(scheme)
 }
 
-func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(GroupVersion,
-		&CloudCluster{},
-		&CloudClusterList{},
-	)
-	return nil
+func init() {
+	SchemeBuilder.Register(func(scheme *runtime.Scheme) error {
+		scheme.AddKnownTypes(GroupVersion, &CloudCluster{}, &CloudClusterList{})
+		return nil
+	})
 }

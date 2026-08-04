@@ -7,6 +7,7 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // CloudClusterSpec defines the desired state of CloudCluster.
@@ -97,6 +98,34 @@ type CloudClusterList struct {
 	Items           []CloudCluster `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&CloudCluster{}, &CloudClusterList{})
+func (in *CloudCluster) DeepCopyObject() runtime.Object {
+	out := new(CloudCluster)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *CloudCluster) DeepCopyInto(out *CloudCluster) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	out.ObjectMeta = in.ObjectMeta
+	out.Spec = in.Spec
+	out.Status = in.Status
+}
+
+func (in *CloudClusterList) DeepCopyObject() runtime.Object {
+	out := new(CloudClusterList)
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *CloudClusterList) DeepCopyInto(out *CloudClusterList) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	out.ListMeta = in.ListMeta
+	if in.Items != nil {
+		out.Items = make([]CloudCluster, len(in.Items))
+		for i := range in.Items {
+			in.Items[i].DeepCopyInto(&out.Items[i])
+		}
+	}
 }

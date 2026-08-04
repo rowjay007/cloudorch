@@ -26,7 +26,7 @@ type CloudClusterReconciler struct {
 }
 
 func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := ctrl.Log.FromContext(ctx)
+	log, _ := logr.FromContext(ctx)
 
 	var cluster computev1.CloudCluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
@@ -180,13 +180,12 @@ func (r *CloudClusterReconciler) setCondition(ctx context.Context, cluster *comp
 		cluster.Status.Synced = true
 	}
 
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, r.Status().Update(ctx, cluster)
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, r.Update(ctx, cluster)
 }
 
 func (r *CloudClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&computev1.CloudCluster{}).
-		Owns(&computev1.NodePool{}).
 		Complete(r)
 }
 

@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"fmt"
 )
 
 type CloudProvider interface {
@@ -88,8 +89,9 @@ type DNSZoneID struct {
 }
 
 type SecurityPolicyID struct {
-	Name   string
-	Region string
+	Name     string
+	Region   string
+	PolicyName string
 }
 
 
@@ -196,6 +198,13 @@ type DatabaseSpec struct {
 type DatabasePatch struct {
 	BackupRetentionDays *int32
 	StorageGB           *int32
+}
+
+type LifecycleRule struct {
+	ID     string
+	Prefix string
+	Status string
+	Days   int32
 }
 
 type ObjectStoreSpec struct {
@@ -358,6 +367,28 @@ type CostEstimate struct {
 	Breakdown   map[string]float64
 }
 
+type ProviderRegistry struct {
+	providers map[string]CloudProvider
+}
+
+func NewProviderRegistry(providers map[string]CloudProvider) *ProviderRegistry {
+	return &ProviderRegistry{providers: providers}
+}
+
+func (r *ProviderRegistry) For(providerName string) (CloudProvider, error) {
+	p, ok := r.providers[providerName]
+	if !ok {
+		return nil, fmt.Errorf("unknown provider %q", providerName)
+	}
+	return p, nil
+}
+
+type Operation struct {
+	Op   string
+	Name string
+	Spec interface{}
+	Patch interface{}
+}
 
 func IsNotFound(err error) bool {
 	if err == nil {
