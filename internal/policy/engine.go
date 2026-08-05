@@ -150,8 +150,8 @@ violation[msg] {
 cost_threshold = 5000
 
 violation[msg] {
-    input.cluster.spec.estimatedMonthlyCost > cost_threshold
-    msg := sprintf("Estimated monthly cost $%.2f exceeds threshold $%.2f", [input.cluster.spec.estimatedMonthlyCost, cost_threshold])
+    input.cluster.status.estimatedMonthlyCost > cost_threshold
+    msg := sprintf("Estimated monthly cost $%.2f exceeds threshold $%.2f", [input.cluster.status.estimatedMonthlyCost, cost_threshold])
 }
 `,
 	}

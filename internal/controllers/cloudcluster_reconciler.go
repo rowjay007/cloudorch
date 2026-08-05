@@ -67,7 +67,7 @@ func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	plan := r.computePlan(cluster.Spec, actual)
-	if err := r.executePlan(ctx, log, provider, plan); err != nil {
+	if err := r.executePlan(ctx, log, cluster.Spec.Region, provider, plan); err != nil {
 		return r.setCondition(ctx, &cluster, "Ready", "ReconcileFailed", err.Error())
 	}
 
@@ -83,6 +83,9 @@ func (r *CloudClusterReconciler) handleDeletion(ctx context.Context, log logr.Lo
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	} else if !cloud.IsNotFound(err) {
+		log.Error(err, "failed to get cluster for deletion")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
 	// Cloud resource is gone. Remove finalizer.
@@ -125,7 +128,7 @@ func (r *CloudClusterReconciler) computePlan(spec computev1.CloudClusterSpec, ac
 	return ops
 }
 
-func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logger, provider cloud.CloudProvider, plan []cloud.Operation) error {
+func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logger, region string, provider cloud.CloudProvider, plan []cloud.Operation) error {
 	for _, op := range plan {
 		switch op.Op {
 		case "CREATE":
@@ -136,13 +139,7 @@ func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logge
 			}
 		case "UPDATE":
 			log.Info("updating cluster", "name", op.Name)
-			err := provider.UpdateCluster(ctx, cloud.ClusterID{Name: op.Name, Region: ""}, op.Patch.(cloud.ClusterPatch))
-			if err != nil {
-				return err
-			}
-		case "DELETE":
-			log.Info("deleting cluster", "name", op.Name)
-			err := provider.DeleteCluster(ctx, cloud.ClusterID{Name: op.Name, Region: ""})
+			err := provider.UpdateCluster(ctx, cloud.ClusterID{Name: op.Name, Region: region}, op.Patch.(cloud.ClusterPatch))
 			if err != nil {
 				return err
 			}

@@ -32,7 +32,6 @@ type CloudClusterSpec struct {
 	NodeCount int32 `json:"nodeCount"`
 
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=t3.medium;t3.large;t3.xlarge;m5.large;m5.xlarge;m5.2xlarge
 	InstanceType string `json:"instanceType"`
 
 	// +kubebuilder:validation:Optional

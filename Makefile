@@ -5,13 +5,13 @@ GO      := go
 GOPATH  ?= $(shell $(GO) env GOPATH)
 GOCMD   := $(GOPATH)/bin
 
-CONTROLLER_GEN_VERSION := v0.14.0
+CONTROLLER_GEN_VERSION := v0.16.1
 KUSTOMIZE_VERSION      := v5.4.2
 
 API_DIR      := api
 CONFIG_DIR   := config
 CHARTS_DIR   := helm/cloudorch
-BIN_DIR      := bin
+BIN_DIR      := $(abspath bin)
 
 OPERATOR     := cloudorch
 
@@ -33,6 +33,7 @@ generate: tools
 
 .PHONY: manifests
 manifests: tools
+	mkdir -p $(CONFIG_DIR)/crd/bases $(CONFIG_DIR)/rbac $(CONFIG_DIR)/webhook
 	$(BIN_DIR)/controller-gen crd:crdVersions=v1 paths=./api/... output:crd:artifacts:config=$(CONFIG_DIR)/crd/bases
 	$(BIN_DIR)/controller-gen rbac:roleName=manager-role paths=./... output:rbac:artifacts:config=$(CONFIG_DIR)/rbac
 	$(BIN_DIR)/controller-gen webhook paths=./... output:webhook:artifacts:config=$(CONFIG_DIR)/webhook
