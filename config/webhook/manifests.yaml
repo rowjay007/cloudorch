@@ -1,0 +1,47 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: cloudorch-validating-webhook
+  labels:
+    app.kubernetes.io/name: cloudorch
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: validation.cloudorch.io
+    rules:
+      - apiGroups: ["compute.cloudorch.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["cloudclusters"]
+    clientConfig:
+      service:
+        name: cloudorch-webhook
+        namespace: cloudorch-system
+        path: /validate-cloudclusters
+      caBundle: ""
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: cloudorch-mutating-webhook
+  labels:
+    app.kubernetes.io/name: cloudorch
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: mutation.cloudorch.io
+    rules:
+      - apiGroups: ["compute.cloudorch.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["cloudclusters"]
+    clientConfig:
+      service:
+        name: cloudorch-webhook
+        namespace: cloudorch-system
+        path: /mutate-cloudclusters
+      caBundle: ""
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5
