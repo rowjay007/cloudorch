@@ -20,38 +20,9 @@ On paper, CloudOrch is a textbook level-triggered operator: a CRD for desired st
 
 ![CloudOrch control plane architecture](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/architecture.png)
 
-```mermaid
-flowchart LR
-  subgraph k8s["Kubernetes control plane"]
-    CR["CloudCluster CR"]
-    API["API Server"]
-    STAT["status.ready / conditions"]
-  end
-
-  subgraph op["CloudOrch operator"]
-    REC["CloudClusterReconciler"]
-    POL["policy.Engine"]
-    WH["webhook.Server"]
-    REG["ProviderRegistry"]
-  end
-
-  subgraph cloud["Cloud providers"]
-    AWS["AWSProvider"]
-    GCP["GCPProvider"]
-    AZ["AzureProvider"]
-  end
-
-  CR --> API --> REC
-  REC --> POL
-  REC --> REG
-  REG --> AWS & GCP & AZ
-  REC --> STAT
-  API -.->|"admission paths in YAML"| WH
-```
+![CloudOrch control-plane flow](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/control-plane.png)
 
 The CRD print columns make the operator look observable from day one.
-
-**`api/compute/v1/cloudcluster_types.go`**
 
 ```go
 // +kubebuilder:object:root=true
@@ -92,8 +63,6 @@ Two hours later, during a routine cost audit, someone noticed that the AWS conso
 
 Tracing the code revealed the root cause in `computePlan`. The method compares the desired spec against the provider's reported state and emits operations. If the cluster doesn't exist or isn't `ACTIVE`, it emits a `CREATE`. If the node count differs, it emits an `UPDATE`. The implementation only checked one field.
 
-**`internal/controllers/cloudcluster_reconciler.go`**
-
 ```go
 func (r *CloudClusterReconciler) computePlan(spec computev1.CloudClusterSpec, actual *cloud.ClusterState) []cloud.Operation {
 	var ops []cloud.Operation
@@ -129,28 +98,9 @@ func (r *CloudClusterReconciler) computePlan(spec computev1.CloudClusterSpec, ac
 
 Notice what's missing. The `UPDATE` branch checks `actual.NodeCount != spec.NodeCount` but does not check `actual.InstanceType != spec.InstanceType`. It does not check `actual.Version != spec.KubernetesVersion`. When the engineer updated `spec.instanceType` from `t3.large` to `t3.xlarge`, the plan computed empty. The reconciler returned `setCondition` with `Synced`. The status showed success. The cluster continued running with the old instance type. The drift was silent — the most dangerous failure mode in a control plane, because the operator provides no signal that anything is wrong.
 
-```mermaid
-sequenceDiagram
-  participant Eng as Platform engineer
-  participant API as Kubernetes API
-  participant Rec as Reconciler
-  participant Plan as computePlan
-  participant AWS as CloudProvider
-
-  Eng->>API: patch instanceType t3.xlarge
-  API->>Rec: Reconcile
-  Rec->>AWS: GetCluster
-  AWS-->>Rec: Status=ACTIVE, InstanceType=t3.large
-  Rec->>Plan: desired vs actual
-  Note over Plan: only NodeCount compared
-  Plan-->>Rec: ops = []
-  Rec->>API: setCondition Ready/Synced
-  Note over Eng,AWS: AWS still on t3.large, no UPDATE emitted
-```
+![Silent drift sequence](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/silent-drift.png)
 
 The `executePlan` method compounded the risk. It type-asserts `op.Spec` and `op.Patch` with no guards.
-
-**`internal/controllers/cloudcluster_reconciler.go`**
 
 ```go
 func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logger, region string, provider cloud.CloudProvider, plan []cloud.Operation) error {
@@ -176,8 +126,6 @@ func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logge
 
 The `Operation` struct uses `interface{}` for both `Spec` and `Patch`.
 
-**`internal/cloud/provider.go`**
-
 ```go
 type Operation struct {
 	Op    string
@@ -198,8 +146,6 @@ The lesson: a level-triggered reconciler is only as good as its diff logic. If t
 The `CloudProvider` interface defines 33 methods across nine resource types. The AWS implementation satisfies every method by returning hardcoded structs with no external API calls.
 
 `GetCluster` always returns `Status: "ACTIVE"`. `CreateCluster` returns `Status: "CREATING"` but never transitions. `UpdateCluster` and `DeleteCluster` return `nil` immediately.
-
-**`internal/cloud/aws/provider.go`**
 
 ```go
 func (p *AWSProvider) GetCluster(ctx context.Context, id cloud.ClusterID) (*cloud.ClusterState, error) {
@@ -236,17 +182,7 @@ The load balancer ARN includes a hardcoded account ID: `arn:aws:elasticloadbalan
 
 This was the root cause of the Monday incident and several others. The deletion handler calls `DeleteCluster`, receives `nil`, requeues, calls `GetCluster`, sees `ACTIVE` (because the stub returned it), calls `DeleteCluster` again. The finalizer never clears. The Kubernetes object remains in `Terminating` indefinitely.
 
-```mermaid
-flowchart TD
-  A["handleDeletion"] --> B["DeleteCluster returns nil"]
-  B --> C["requeue after 10s"]
-  C --> D["GetCluster"]
-  D --> E{"stub returns ACTIVE?"}
-  E -->|yes| B
-  E -->|real not-found| F["remove finalizer"]
-  style E fill:#FEF2F2,stroke:#B91C1C
-  style F fill:#ECFDF5,stroke:#047857
-```
+![Stub provider deletion loop](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/stub-loop.png)
 
 The stub was not a test double. It was not gated behind a build tag. It was the production code path. Any engineer reading the interface contract would assume it talks to real AWS APIs. The stub satisfied the interface, passed type checks, and compiled cleanly. It was more dangerous than a method that returned `errors.New("not implemented")`, because it returned plausible-looking data.
 
@@ -264,8 +200,6 @@ The policy engine compiles Rego modules at startup using `ast.NewCompiler()` and
 
 The first problem was input. The cost-threshold policy references `input.cluster.status.estimatedMonthlyCost`.
 
-**`internal/policy/engine.go` (embedded Rego)**
-
 ```rego
 package cloudorch
 
@@ -280,8 +214,6 @@ violation[msg] {
 The `setCondition` method in the reconciler sets boolean flags and condition arrays but never populates `cluster.Status.EstimatedMonthlyCost`. The field in the CRD exists, the policy references it, but nothing writes to it. The cost policy compiles, runs, and always passes because the input is always zero.
 
 The second problem was the query structure. All four default policies declare `package cloudorch` and define `violation[msg]` rules. The `Evaluate` method queries `data.cloudorch.allow`.
-
-**`internal/policy/engine.go`**
 
 ```go
 func (e *Engine) Evaluate(ctx context.Context, cluster interface{}) ([]Violation, error) {
@@ -302,7 +234,26 @@ func (e *Engine) Evaluate(ctx context.Context, cluster interface{}) ([]Violation
 		rego.Query("data.cloudorch.allow"),
 		rego.Input(input),
 	)
-	// ... eval, then treat any false expression as a violation
+
+	rs, err := r.Eval(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("policy evaluation failed: %w", err)
+	}
+
+	var violations []Violation
+	for _, result := range rs {
+		for _, expr := range result.Expressions {
+			if !expr.Value.(bool) {
+				violations = append(violations, Violation{
+					Rule:     expr.Text,
+					Message:  fmt.Sprintf("Policy violation: %s", expr.Text),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
+	return violations, nil
 }
 ```
 
@@ -311,8 +262,6 @@ The first policy sets `default allow = true`. The other three define only `viola
 The third problem was the `HotReload` method. It exists, is public, and is architecturally correct — it locks the compiler, swaps the policy set, and recompiles under a write lock. But nothing in the codebase calls it. There is no file watcher, no ConfigMap reference, no API endpoint. The capability exists but is unreachable in practice. It is a method in search of a caller.
 
 The fourth problem was silent compilation failure. If `ast.ParseModule` fails on any policy, the `compile` method logs the error and returns without setting `e.compiler`.
-
-**`internal/policy/engine.go`**
 
 ```go
 func (e *Engine) compile() {
@@ -325,7 +274,21 @@ func (e *Engine) compile() {
 		}
 		modules = append(modules, m)
 	}
-	// ... compile modules, bail out on compiler.Failed()
+
+	compiler := ast.NewCompiler()
+	moduleMap := make(map[string]*ast.Module)
+	for i, m := range modules {
+		moduleMap[fmt.Sprintf("policy_%d", i)] = m
+	}
+	compiler.Compile(moduleMap)
+	if compiler.Failed() {
+		e.logger.Error("policy compilation failed", zap.Any("errors", compiler.Errors))
+		return
+	}
+
+	e.mu.Lock()
+	e.compiler = compiler
+	e.mu.Unlock()
 }
 ```
 
@@ -343,8 +306,6 @@ The webhook manifests declare two webhooks at specific paths. The server registe
 
 ![Webhook path mismatch between manifests and runtime](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/webhook-mismatch.png)
 
-**`config/webhook/manifests.yaml`**
-
 ```yaml
     clientConfig:
       service:
@@ -352,8 +313,6 @@ The webhook manifests declare two webhooks at specific paths. The server registe
         namespace: cloudorch-system
         path: /validate-cloudclusters
 ```
-
-**`internal/webhook/server.go`**
 
 ```go
 func (s *Server) Start(ctx context.Context) error {
@@ -363,13 +322,29 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	// ...
+
+	s.Server = &http.Server{
+		Addr:         fmt.Sprintf(":%d", s.Port),
+		Handler:      mux,
+		TLSConfig:    &tls.Config{MinVersion: tls.VersionTLS13},
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		if err := s.Server.ListenAndServeTLS(
+			s.CertDir+"/tls.crt",
+			s.CertDir+"/tls.key",
+		); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("webhook server failed: %v\n", err)
+		}
+	}()
+
+	return nil
 }
 ```
 
 But the path mismatch was moot, because `main.go` never calls `Server.Start`. The webhook server is created but never started. The deployment template passes `--webhook-port=9443` as a container argument, but the operator code does not read this flag or create the webhook server. The admission registrations exist in the cluster. Cert-manager is configured to provision certificates. The API server attempts to call the endpoints. But the operator never serves them.
-
-**`helm/cloudorch/templates/deployment.yaml`**
 
 ```yaml
         - --webhook-port={{ .Values.webhook.port }}
@@ -379,16 +354,12 @@ But the path mismatch was moot, because `main.go` never calls `Server.Start`. Th
 
 The HTTP handlers return 200 OK without any logic.
 
-**`internal/webhook/server.go`**
-
 ```go
 func (s *Server) validateHandler(w http.ResponseWriter, r *http.Request) {
-	// Webhook handler implementation
 	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) mutateHandler(w http.ResponseWriter, r *http.Request) {
-	// Webhook handler implementation
 	w.WriteHeader(http.StatusOK)
 }
 ```
@@ -401,18 +372,7 @@ The webhook manifests reference a service named `cloudorch-webhook` in namespace
 
 The Helm deployment template mounts a volume for webhook certificates from a secret named `cloudorch-webhook-cert`. This secret is supposed to be created by cert-manager, but cert-manager only creates certificates for webhooks that have a running service endpoint. The circular dependency is complete: the operator needs certificates to start the webhook, but cert-manager needs a webhook endpoint to issue certificates, and the operator never starts the webhook.
 
-```mermaid
-flowchart LR
-  H["Helm chart"] --> M["WebhookConfiguration"]
-  H --> D["Deployment --webhook-port"]
-  H -.->|"template missing"| S["Service cloudorch-webhook"]
-  M --> A["API Server"]
-  A -.->|"404 / unavailable"| S
-  D -.->|"flag ignored"| Main["main.go"]
-  Main -.->|"Server.Start never called"| WH["webhook.Server"]
-  style S fill:#FEF2F2,stroke:#B91C1C
-  style WH fill:#FEF2F2,stroke:#B91C1C
-```
+![Webhook wiring gaps](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/webhook-wiring.png)
 
 We fixed this by wiring `Server.Start` into `main.go` with the webhook port from the command line flags, registering the actual `Handle` methods on the correct paths, adding the missing service template to the Helm chart, and adding a startup check that fails the operator if the webhook server cannot bind to its port. We also added an integration test that deploys the Helm chart to a test cluster and verifies that the webhook responds to admission requests.
 
@@ -421,8 +381,6 @@ The lesson: deployment artifacts are not the same as runtime behavior. A webhook
 ## The status that lied
 
 The `setCondition` method in the reconciler updates the `Ready` and `Synced` boolean flags only when the reason is `Synced`.
-
-**`internal/controllers/cloudcluster_reconciler.go`**
 
 ```go
 func (r *CloudClusterReconciler) setCondition(ctx context.Context, cluster *computev1.CloudCluster, conditionType, reason, message string) (ctrl.Result, error) {
@@ -435,7 +393,19 @@ func (r *CloudClusterReconciler) setCondition(ctx context.Context, cluster *comp
 		LastTransitionTime: now,
 	}
 
-	// ... merge condition into cluster.Status.Conditions ...
+	found := false
+	for i, c := range cluster.Status.Conditions {
+		if c.Type == conditionType {
+			if c.Reason != reason || c.Message != message {
+				cluster.Status.Conditions[i] = condition
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		cluster.Status.Conditions = append(cluster.Status.Conditions, condition)
+	}
 
 	if conditionType == "Ready" && reason == "Synced" {
 		cluster.Status.Ready = true
@@ -468,8 +438,6 @@ The `handleDeletion` method calls `provider.GetCluster` to check existence, call
 
 ![Finalizer stuck because IsNotFound is stringly typed](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/finalizer-loop.png)
 
-**`internal/controllers/cloudcluster_reconciler.go`**
-
 ```go
 func (r *CloudClusterReconciler) handleDeletion(ctx context.Context, log logr.Logger, cluster *computev1.CloudCluster, provider cloud.CloudProvider) (ctrl.Result, error) {
 	clusterID := cloud.ClusterID{Name: cluster.Name, Region: cluster.Spec.Region}
@@ -485,7 +453,6 @@ func (r *CloudClusterReconciler) handleDeletion(ctx context.Context, log logr.Lo
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
-	// Cloud resource is gone. Remove finalizer.
 	if controllerutil.ContainsFinalizer(cluster, cloudOrchFinalizer) {
 		controllerutil.RemoveFinalizer(cluster, cloudOrchFinalizer)
 		return ctrl.Result{}, r.Update(ctx, cluster)
@@ -496,8 +463,6 @@ func (r *CloudClusterReconciler) handleDeletion(ctx context.Context, log logr.Lo
 ```
 
 The `cloud.IsNotFound` function is a simple string comparison.
-
-**`internal/cloud/provider.go`**
 
 ```go
 func IsNotFound(err error) bool {
@@ -519,8 +484,6 @@ The lesson: error handling contracts must be explicit and enforced. A function t
 ## The namespace we forgot to create
 
 The `main.go` configures leader election with namespace `cloudorch-system`.
-
-**`main.go`**
 
 ```go
 mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -546,8 +509,6 @@ The lesson: operators that assume pre-existing infrastructure are common — Arg
 
 The `CloudProvider` interface defines 33 methods. The operator only uses four of them: `GetCluster`, `CreateCluster`, `UpdateCluster`, `DeleteCluster`. The remaining 29 methods — covering databases, object stores, cache clusters, virtual networks, load balancers, DNS zones, and security policies — are stubbed in every provider.
 
-**`internal/cloud/provider.go`**
-
 ```go
 type CloudProvider interface {
 	Name() string
@@ -560,7 +521,38 @@ type CloudProvider interface {
 
 	GetDatabase(ctx context.Context, id DatabaseID) (*DatabaseState, error)
 	CreateDatabase(ctx context.Context, spec DatabaseSpec) (*DatabaseState, error)
-	// ... 25 more methods: object stores, caches, networks, load balancers, DNS, security ...
+	UpdateDatabase(ctx context.Context, id DatabaseID, patch DatabasePatch) error
+	DeleteDatabase(ctx context.Context, id DatabaseID) error
+
+	GetObjectStore(ctx context.Context, id ObjectStoreID) (*ObjectStoreState, error)
+	CreateObjectStore(ctx context.Context, spec ObjectStoreSpec) (*ObjectStoreState, error)
+	UpdateObjectStore(ctx context.Context, id ObjectStoreID, patch ObjectStorePatch) error
+	DeleteObjectStore(ctx context.Context, id ObjectStoreID) error
+
+	GetCacheCluster(ctx context.Context, id CacheClusterID) (*CacheClusterState, error)
+	CreateCacheCluster(ctx context.Context, spec CacheClusterSpec) (*CacheClusterState, error)
+	UpdateCacheCluster(ctx context.Context, id CacheClusterID, patch CacheClusterPatch) error
+	DeleteCacheCluster(ctx context.Context, id CacheClusterID) error
+
+	GetVirtualNetwork(ctx context.Context, id VirtualNetworkID) (*VirtualNetworkState, error)
+	CreateVirtualNetwork(ctx context.Context, spec VirtualNetworkSpec) (*VirtualNetworkState, error)
+	UpdateVirtualNetwork(ctx context.Context, id VirtualNetworkID, patch VirtualNetworkPatch) error
+	DeleteVirtualNetwork(ctx context.Context, id VirtualNetworkID) error
+
+	GetLoadBalancer(ctx context.Context, id LoadBalancerID) (*LoadBalancerState, error)
+	CreateLoadBalancer(ctx context.Context, spec LoadBalancerSpec) (*LoadBalancerState, error)
+	UpdateLoadBalancer(ctx context.Context, id LoadBalancerID, patch LoadBalancerPatch) error
+	DeleteLoadBalancer(ctx context.Context, id LoadBalancerID) error
+
+	GetDNSZone(ctx context.Context, id DNSZoneID) (*DNSZoneState, error)
+	CreateDNSZone(ctx context.Context, spec DNSZoneSpec) (*DNSZoneState, error)
+	UpdateDNSZone(ctx context.Context, id DNSZoneID, patch DNSZonePatch) error
+	DeleteDNSZone(ctx context.Context, id DNSZoneID) error
+
+	GetSecurityPolicy(ctx context.Context, id SecurityPolicyID) (*SecurityPolicyState, error)
+	CreateSecurityPolicy(ctx context.Context, spec SecurityPolicySpec) (*SecurityPolicyState, error)
+	UpdateSecurityPolicy(ctx context.Context, id SecurityPolicyID, patch SecurityPolicyPatch) error
+	DeleteSecurityPolicy(ctx context.Context, id SecurityPolicyID) error
 
 	EstimateMonthlyCost(ctx context.Context, resources []ResourceSpec) (*CostEstimate, error)
 }
@@ -578,8 +570,6 @@ The lesson: interfaces should be as small as the current implementation requires
 
 The `main.go` registers health checks using `healthz.Ping`.
 
-**`main.go`**
-
 ```go
 if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 	log.Error(err, "failed to add healthz check")
@@ -595,24 +585,7 @@ if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 
 We discovered this during an incident where the AWS provider's credentials had expired. The operator pod was running. The health checks passed. The reconciler was failing with authentication errors on every loop, but the liveness probe showed the pod was healthy. Kubernetes did not restart it. The cluster drifted for two hours before we noticed.
 
-```mermaid
-flowchart TB
-  subgraph before["Before: process liveness is not operator health"]
-    P1["healthz.Ping always OK"]
-    P2["Credentials expired"]
-    P3["Reconcile fails every loop"]
-    P4["Pod stays Running"]
-    P1 --> P4
-    P2 --> P3 --> P4
-  end
-
-  subgraph after["After: functional readiness"]
-    F1["Provider registry lists regions"]
-    F2["Policy compiler non-nil"]
-    F3["Webhook port listening"]
-    F1 & F2 & F3 --> R["Ready only if all pass"]
-  end
-```
+![Health checks before and after](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/healthz.png)
 
 We replaced `healthz.Ping` with functional health checks that verify the provider registry can list regions, the policy engine has compiled at least one policy, and the webhook server is listening on its port. The health check now fails if any of these components is non-functional, causing Kubernetes to restart the pod and trigger leader election on a healthy replica.
 
@@ -634,8 +607,6 @@ The lesson: deployment artifacts must be tested as a whole. The Helm chart, the 
 
 Despite these incidents, the structural decisions were correct. The finalizer pattern works as designed — the reconciler checks `DeletionTimestamp`, destroys the cloud resource, and removes the finalizer only after the cloud API confirms deletion. The level-triggered reconciler converges automatically after missed events or partial failures. The strategy-pattern provider interface allows pluggable cloud backends. The OPA policy engine evaluates rules in-process with low latency. The status subresource separates spec from observation.
 
-**`internal/controllers/cloudcluster_reconciler.go`**
-
 ```go
 func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log, _ := logr.FromContext(ctx)
@@ -655,10 +626,37 @@ func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return r.handleDeletion(ctx, log, &cluster, provider)
 	}
 
-	// ... finalizer, policy, get actual state, compute plan, execute, set condition
+	if !controllerutil.ContainsFinalizer(&cluster, cloudOrchFinalizer) {
+		controllerutil.AddFinalizer(&cluster, cloudOrchFinalizer)
+		return ctrl.Result{}, r.Update(ctx, &cluster)
+	}
+
+	violations, err := r.Policy.Evaluate(ctx, &cluster)
+	if err != nil {
+		log.Error(err, "policy evaluation failed")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+	if len(violations) > 0 {
+		return r.setCondition(ctx, &cluster, "Ready", "PolicyViolation", formatViolations(violations))
+	}
+
+	actual, err := provider.GetCluster(ctx, cloud.ClusterID{
+		Name:   cluster.Name,
+		Region: cluster.Spec.Region,
+	})
+	if err != nil && !cloud.IsNotFound(err) {
+		log.Error(err, "failed to get cluster from cloud")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+
+	plan := r.computePlan(cluster.Spec, actual)
+	if err := r.executePlan(ctx, log, cluster.Spec.Region, provider, plan); err != nil {
+		return r.setCondition(ctx, &cluster, "Ready", "ReconcileFailed", err.Error())
+	}
+
+	return r.setCondition(ctx, &cluster, "Ready", "Synced", "Cluster reconciled successfully")
 }
 ```
-
 The `ProviderRegistry` wraps a map of named providers with a `For` lookup. Adding a new provider means implementing the interface and registering it in `main.go`. The interface is large — 33 methods across nine resource types — but each resource type is self-contained. The design allows incremental implementation, even if our initial implementation was incomplete.
 
 The policy engine's `sync.RWMutex` allows concurrent evaluation during hot reload. The `RLock` in `Evaluate` ensures that policy evaluation does not block while the compiler is being swapped. This is the right concurrency pattern for a read-heavy workload.
