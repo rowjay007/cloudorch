@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 56" role="img" aria-label="Built with Go, Kubernetes, OPA, AWS">
+  <defs>
+    <style>
+      .label { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10px; fill: #64748B; }
+    </style>
+  </defs>
+  <rect width="720" height="56" fill="#FFFFFF"/>
+
+  <rect x="0" y="4" width="150" height="48" rx="8" fill="#E8F5E9" stroke="#A5D6A7"/>
+  <circle cx="28" cy="28" r="14" fill="#00ADD8"/>
+  <text x="21" y="33" class="label" fill="#FFFFFF" font-size="11">Go</text>
+  <text x="50" y="25" class="label">Go 1.23+</text>
+  <text x="50" y="40" class="sub">controller-runtime</text>
+
+  <rect x="166" y="4" width="170" height="48" rx="8" fill="#EEF2FF" stroke="#C7D2FE"/>
+  <circle cx="194" cy="28" r="14" fill="#326CE5"/>
+  <text x="185" y="33" class="label" fill="#FFFFFF" font-size="10">K8s</text>
+  <text x="216" y="25" class="label">Kubernetes</text>
+  <text x="216" y="40" class="sub">Operators &#183; CRDs</text>
+
+  <rect x="352" y="4" width="160" height="48" rx="8" fill="#FEF3C7" stroke="#FCD34D"/>
+  <circle cx="380" cy="28" r="14" fill="#1A2B3C"/>
+  <text x="369" y="33" class="label" fill="#FBBF24" font-size="10">OPA</text>
+  <text x="402" y="25" class="label">Open Policy</text>
+  <text x="402" y="40" class="sub">Rego in-process</text>
+
+  <rect x="528" y="4" width="170" height="48" rx="8" fill="#FFF7ED" stroke="#FDBA74"/>
+  <circle cx="556" cy="28" r="14" fill="#FF9900"/>
+  <text x="544" y="33" class="label" fill="#111111" font-size="10">AWS</text>
+  <text x="578" y="25" class="label">Cloud APIs</text>
+  <text x="578" y="40" class="sub">EKS &#183; SDK v2</text>
+</svg>

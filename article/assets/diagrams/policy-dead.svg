@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 320" role="img" aria-label="Policy engine dead wiring">
+  <defs>
+    <style>
+      .box { fill: #F8FAFC; stroke: #334155; stroke-width: 1.5; }
+      .bad { fill: #FEF2F2; stroke: #B91C1C; stroke-width: 1.75; }
+      .warn { fill: #FFF7ED; stroke: #C2410C; stroke-width: 1.5; }
+      .title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #475569; }
+      .mono { font-family: Menlo, Consolas, monospace; font-size: 11px; fill: #0F172A; }
+      .caption { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect width="920" height="320" fill="#FFFFFF"/>
+  <text x="20" y="28" class="caption">Figure 5 &#8212; Four ways a compiled policy still fails to control anything</text>
+
+  <rect class="warn" x="30" y="60" width="200" height="100" rx="10"/>
+  <text x="66" y="95" class="title">1. Empty input</text>
+  <text x="50" y="118" class="mono">EstimatedMonthlyCost</text>
+  <text x="50" y="136" class="sub">never written &#8594; always 0</text>
+
+  <rect class="warn" x="250" y="60" width="200" height="100" rx="10"/>
+  <text x="284" y="95" class="title">2. Wrong query</text>
+  <text x="270" y="118" class="mono">data.cloudorch.allow</text>
+  <text x="270" y="136" class="sub">violation rules never queried</text>
+
+  <rect class="warn" x="470" y="60" width="200" height="100" rx="10"/>
+  <text x="500" y="95" class="title">3. Dead HotReload</text>
+  <text x="490" y="118" class="sub">Public method exists</text>
+  <text x="490" y="136" class="sub">No caller in the codebase</text>
+
+  <rect class="bad" x="690" y="60" width="200" height="100" rx="10"/>
+  <text x="716" y="95" class="title">4. Silent compile</text>
+  <text x="710" y="118" class="sub">Parse error &#8594; early return</text>
+  <text x="710" y="136" class="sub">Subset of policies enforced</text>
+
+  <rect class="box" x="140" y="200" width="640" height="86" rx="10"/>
+  <text x="270" y="236" class="title">Result: policy looks enforced; admission and cost checks quietly pass</text>
+  <text x="176" y="262" class="sub">The architecture assumed evaluation on every path. The implementation left gaps in input, query, reload, and failure signaling.</text>
+</svg>

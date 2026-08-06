@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 380" role="img" aria-label="Webhook path mismatch">
+  <defs>
+    <style>
+      .box { fill: #F8FAFC; stroke: #334155; stroke-width: 1.5; }
+      .bad { fill: #FEF2F2; stroke: #B91C1C; stroke-width: 1.75; }
+      .ok { fill: #ECFDF5; stroke: #047857; stroke-width: 1.5; }
+      .title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #475569; }
+      .mono { font-family: Menlo, Consolas, monospace; font-size: 11px; fill: #0F172A; }
+      .edge { stroke: #B91C1C; stroke-width: 1.8; fill: none; marker-end: url(#ar); }
+      .caption { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #334155; }
+      .x { fill: #B91C1C; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 22px; font-weight: 700; }
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#B91C1C"/>
+    </marker>
+  </defs>
+
+  <rect width="920" height="380" fill="#FFFFFF"/>
+  <text x="20" y="28" class="caption">Figure 3 &#8212; Webhook: manifests vs runtime (paths never meet)</text>
+
+  <rect class="box" x="40" y="70" width="240" height="120" rx="10"/>
+  <text x="58" y="105" class="title">ValidatingWebhookConfiguration</text>
+  <text x="60" y="130" class="mono">path: /validate-cloudclusters</text>
+  <text x="60" y="150" class="mono">service: cloudorch-webhook</text>
+  <text x="60" y="170" class="mono">ns: cloudorch-system</text>
+
+  <rect class="bad" x="360" y="70" width="220" height="120" rx="10"/>
+  <text x="412" y="105" class="title">API Server call</text>
+  <text x="382" y="132" class="sub">POST /validate-cloudclusters</text>
+  <text x="382" y="152" class="sub">&#8594; Service not found / 404</text>
+  <text x="382" y="172" class="sub">Admission treated unavailable</text>
+
+  <rect class="box" x="660" y="70" width="220" height="120" rx="10"/>
+  <text x="700" y="105" class="title">Server.Start mux</text>
+  <text x="682" y="130" class="mono">/validate  (stub 200 OK)</text>
+  <text x="682" y="150" class="mono">/mutate    (stub 200 OK)</text>
+  <text x="682" y="172" class="sub">Never started from main.go</text>
+
+  <path class="edge" d="M280 130 H360"/>
+  <path class="edge" d="M580 130 H660"/>
+  <text x="612" y="58" class="x">&#10007;</text>
+  <text x="312" y="58" class="x">&#10007;</text>
+
+  <rect class="bad" x="40" y="230" width="400" height="100" rx="10"/>
+  <text x="60" y="262" class="title">Three independent failures</text>
+  <text x="60" y="286" class="sub">1. Path mismatch: /validate-cloudclusters vs /validate</text>
+  <text x="60" y="304" class="sub">2. main.go never calls Server.Start</text>
+  <text x="60" y="322" class="sub">3. Helm chart missing webhook Service template</text>
+
+  <rect class="ok" x="480" y="230" width="400" height="100" rx="10"/>
+  <text x="500" y="262" class="title">What closing the gap required</text>
+  <text x="500" y="286" class="sub">Wire Start into main &#183; align paths &#183; add Service</text>
+  <text x="500" y="304" class="sub">Register real Handle methods, not empty 200s</text>
+  <text x="500" y="322" class="sub">End-to-end Helm deploy that exercises admission</text>
+</svg>

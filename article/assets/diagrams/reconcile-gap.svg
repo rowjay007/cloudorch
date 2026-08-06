@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 360" role="img" aria-label="Incomplete computePlan drift">
+  <defs>
+    <style>
+      .box { fill: #F8FAFC; stroke: #334155; stroke-width: 1.5; }
+      .ok { fill: #ECFDF5; stroke: #047857; stroke-width: 1.5; }
+      .bad { fill: #FEF2F2; stroke: #B91C1C; stroke-width: 1.75; }
+      .muted { fill: #F1F5F9; stroke: #94A3B8; stroke-width: 1.25; }
+      .title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #475569; }
+      .edge { stroke: #64748B; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .caption { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #334155; }
+      .mono { font-family: Menlo, Consolas, monospace; font-size: 11px; fill: #0F172A; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="920" height="360" fill="#FFFFFF"/>
+  <text x="20" y="28" class="caption">Figure 2 &#8212; Incomplete diff: status says Synced while the cloud drifts</text>
+
+  <rect class="box" x="30" y="60" width="200" height="90" rx="10"/>
+  <text x="70" y="95" class="title">Desired Spec</text>
+  <text x="48" y="116" class="mono">instanceType: t3.xlarge</text>
+  <text x="48" y="134" class="mono">nodeCount: 3</text>
+
+  <rect class="box" x="280" y="60" width="200" height="90" rx="10"/>
+  <text x="318" y="95" class="title">Actual (cloud)</text>
+  <text x="298" y="116" class="mono">instanceType: t3.large</text>
+  <text x="298" y="134" class="mono">nodeCount: 3</text>
+
+  <rect class="bad" x="530" y="60" width="220" height="90" rx="10"/>
+  <text x="578" y="95" class="title">computePlan()</text>
+  <text x="552" y="116" class="mono">checks NodeCount only</text>
+  <text x="552" y="134" class="mono">plan = []  (empty)</text>
+
+  <path class="edge" d="M230 105 H280"/>
+  <path class="edge" d="M480 105 H530"/>
+
+  <rect class="muted" x="30" y="200" width="280" height="100" rx="10"/>
+  <text x="88" y="235" class="title">What should happen</text>
+  <text x="50" y="258" class="sub">Emit UPDATE for InstanceType</text>
+  <text x="50" y="276" class="sub">Execute plan &#8594; converge</text>
+  <text x="50" y="294" class="sub">Status Ready=True after cloud confirms</text>
+
+  <rect class="bad" x="360" y="200" width="300" height="100" rx="10"/>
+  <text x="424" y="235" class="title">What actually happened</text>
+  <text x="380" y="258" class="sub">Empty plan &#8594; setCondition(Synced)</text>
+  <text x="380" y="276" class="sub">Status Ready=True, Synced=True</text>
+  <text x="380" y="294" class="sub">Cloud stays on t3.large &#8212; silent drift</text>
+
+  <rect class="ok" x="690" y="200" width="200" height="100" rx="10"/>
+  <text x="775" y="240" class="title">Fix</text>
+  <text x="710" y="262" class="sub">Diff all mutable fields</text>
+  <text x="710" y="280" class="sub">Nil-guard type assertions</text>
+</svg>

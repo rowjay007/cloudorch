@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 420" role="img" aria-label="CloudOrch operator architecture">
+  <defs>
+    <style>
+      .box { fill: #F8FAFC; stroke: #334155; stroke-width: 1.5; }
+      .box-accent { fill: #ECFDF5; stroke: #0B6E4F; stroke-width: 1.75; }
+      .box-warn { fill: #FFF7ED; stroke: #C2410C; stroke-width: 1.5; }
+      .box-blue { fill: #EFF6FF; stroke: #1D4ED8; stroke-width: 1.5; }
+      .title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 700; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #475569; }
+      .edge { stroke: #64748B; stroke-width: 1.75; fill: none; marker-end: url(#arrow); }
+      .edge-dashed { stroke: #94A3B8; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrow); }
+      .caption { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #334155; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="920" height="420" fill="#FFFFFF"/>
+  <text x="20" y="28" class="caption">Figure 1 &#8212; CloudOrch control plane (as designed)</text>
+
+  <rect class="box" x="30" y="60" width="140" height="64" rx="10"/>
+  <text x="52" y="88" class="title">Platform eng</text>
+  <text x="46" y="106" class="sub">kubectl apply CR</text>
+
+  <rect class="box-blue" x="220" y="60" width="160" height="64" rx="10"/>
+  <text x="244" y="88" class="title">Kubernetes API</text>
+  <text x="246" y="106" class="sub">etcd &#183; admission</text>
+
+  <rect class="box-accent" x="440" y="50" width="220" height="220" rx="12"/>
+  <text x="482" y="78" class="title">CloudOrch Operator</text>
+  <text x="464" y="96" class="sub">controller-runtime Manager</text>
+
+  <rect class="box" x="460" y="112" width="180" height="42" rx="8"/>
+  <text x="492" y="138" class="title" font-size="12">Reconciler Loop</text>
+
+  <rect class="box" x="460" y="164" width="180" height="42" rx="8"/>
+  <text x="486" y="190" class="title" font-size="12">OPA Policy Engine</text>
+
+  <rect class="box-warn" x="460" y="216" width="180" height="42" rx="8"/>
+  <text x="492" y="242" class="title" font-size="12">Webhook Server</text>
+
+  <rect class="box" x="720" y="60" width="160" height="54" rx="10"/>
+  <text x="766" y="84" class="title">AWS / EKS</text>
+  <text x="740" y="100" class="sub">Create / Update / Delete</text>
+
+  <rect class="box" x="720" y="130" width="160" height="54" rx="10"/>
+  <text x="768" y="154" class="title">GCP / GKE</text>
+  <text x="748" y="170" class="sub">stub &#183; removed later</text>
+
+  <rect class="box" x="720" y="200" width="160" height="54" rx="10"/>
+  <text x="762" y="224" class="title">Azure / AKS</text>
+  <text x="748" y="240" class="sub">stub &#183; removed later</text>
+
+  <rect class="box" x="220" y="300" width="160" height="64" rx="10"/>
+  <text x="246" y="328" class="title">Status subres.</text>
+  <text x="232" y="346" class="sub">Ready &#183; Synced &#183; Cost</text>
+
+  <path class="edge" d="M170 92 H220"/>
+  <path class="edge" d="M380 92 H440"/>
+  <path class="edge" d="M660 135 H720"/>
+  <path class="edge" d="M660 190 H720"/>
+  <path class="edge" d="M660 230 H720"/>
+  <path class="edge-dashed" d="M550 270 V332 H380"/>
+  <path class="edge-dashed" d="M300 300 V124"/>
+
+  <text x="20" y="400" class="sub">Solid arrows: desired control flow. Dashed: status write-back. Orange: present in manifests, often missing at runtime.</text>
+</svg>

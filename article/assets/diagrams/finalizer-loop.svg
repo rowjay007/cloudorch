@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 340" role="img" aria-label="Finalizer stuck on stringly IsNotFound">
+  <defs>
+    <style>
+      .box { fill: #F8FAFC; stroke: #334155; stroke-width: 1.5; }
+      .bad { fill: #FEF2F2; stroke: #B91C1C; stroke-width: 1.75; }
+      .ok { fill: #ECFDF5; stroke: #047857; stroke-width: 1.5; }
+      .title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 700; fill: #0F172A; }
+      .sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #475569; }
+      .mono { font-family: Menlo, Consolas, monospace; font-size: 11px; fill: #0F172A; }
+      .edge { stroke: #64748B; stroke-width: 1.6; fill: none; marker-end: url(#f); }
+      .loop { stroke: #B91C1C; stroke-width: 1.8; fill: none; marker-end: url(#f2); }
+      .caption { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #334155; }
+    </style>
+    <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748B"/>
+    </marker>
+    <marker id="f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#B91C1C"/>
+    </marker>
+  </defs>
+
+  <rect width="920" height="340" fill="#FFFFFF"/>
+  <text x="20" y="28" class="caption">Figure 4 &#8212; Deletion path: stringly IsNotFound holds the finalizer forever</text>
+
+  <rect class="box" x="40" y="70" width="180" height="70" rx="10"/>
+  <text x="62" y="100" class="title">Delete CloudCluster</text>
+  <text x="66" y="120" class="sub">DeletionTimestamp set</text>
+
+  <rect class="box" x="280" y="70" width="180" height="70" rx="10"/>
+  <text x="318" y="100" class="title">DeleteCluster()</text>
+  <text x="306" y="120" class="sub">Cloud resource gone</text>
+
+  <rect class="box" x="520" y="70" width="180" height="70" rx="10"/>
+  <text x="562" y="100" class="title">GetCluster()</text>
+  <text x="534" y="120" class="mono">err: "get cluster: ..."</text>
+
+  <rect class="bad" x="760" y="70" width="120" height="70" rx="10"/>
+  <text x="782" y="100" class="title">IsNotFound?</text>
+  <text x="805" y="120" class="mono">false</text>
+
+  <path class="edge" d="M220 105 H280"/>
+  <path class="edge" d="M460 105 H520"/>
+  <path class="edge" d="M700 105 H760"/>
+
+  <path class="loop" d="M820 140 V220 H140 V140"/>
+  <text x="300" y="212" class="sub" fill="#B91C1C">requeue forever &#183; finalizer never clears &#183; object stuck Terminating</text>
+
+  <rect class="bad" x="40" y="250" width="420" height="60" rx="10"/>
+  <text x="60" y="275" class="title">Broken contract</text>
+  <text x="60" y="296" class="mono">err.Error() == "not found"   // wrapped SDK errors never match</text>
+
+  <rect class="ok" x="500" y="250" width="380" height="60" rx="10"/>
+  <text x="520" y="275" class="title">Fix</text>
+  <text x="520" y="296" class="mono">errors.Is(err, ErrNotFound) + max delete retries</text>
+</svg>
