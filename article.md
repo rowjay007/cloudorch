@@ -22,17 +22,17 @@ On paper, CloudOrch is a textbook level-triggered operator: a CRD for desired st
 
 ![CloudOrch control-plane flow](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/control-plane.png)
 
-The CRD print columns make the operator look observable from day one.
+The CRD declares a status subresource and five print columns, which make the operator look observable from day one.
 
-```go
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="PROVIDER",type=string,JSONPath=`.spec.provider`
-// +kubebuilder:printcolumn:name="REGION",type=string,JSONPath=`.spec.region`
-// +kubebuilder:printcolumn:name="VERSION",type=string,JSONPath=`.spec.kubernetesVersion`
-// +kubebuilder:printcolumn:name="READY",type=boolean,JSONPath=`.status.ready`
-// +kubebuilder:printcolumn:name="SYNCED",type=boolean,JSONPath=`.status.synced`
-```
+| Column | Type | Source field |
+|--------|------|--------------|
+| PROVIDER | string | `.spec.provider` |
+| REGION | string | `.spec.region` |
+| VERSION | string | `.spec.kubernetesVersion` |
+| READY | boolean | `.status.ready` |
+| SYNCED | boolean | `.status.synced` |
+
+Two of those columns, `READY` and `SYNCED`, are plain booleans rather than projections of the condition array. That detail becomes an incident later.
 
 A valid apply looked like any other production CR.
 
@@ -64,7 +64,10 @@ Two hours later, during a routine cost audit, someone noticed that the AWS conso
 Tracing the code revealed the root cause in `computePlan`. The method compares the desired spec against the provider's reported state and emits operations. If the cluster doesn't exist or isn't `ACTIVE`, it emits a `CREATE`. If the node count differs, it emits an `UPDATE`. The implementation only checked one field.
 
 ```go
-func (r *CloudClusterReconciler) computePlan(spec computev1.CloudClusterSpec, actual *cloud.ClusterState) []cloud.Operation {
+func (r *CloudClusterReconciler) computePlan(
+	spec computev1.CloudClusterSpec,
+	actual *cloud.ClusterState,
+) []cloud.Operation {
 	var ops []cloud.Operation
 
 	if actual == nil || actual.Status != "ACTIVE" {
@@ -103,7 +106,13 @@ Notice what's missing. The `UPDATE` branch checks `actual.NodeCount != spec.Node
 The `executePlan` method compounded the risk. It type-asserts `op.Spec` and `op.Patch` with no guards.
 
 ```go
-func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logger, region string, provider cloud.CloudProvider, plan []cloud.Operation) error {
+func (r *CloudClusterReconciler) executePlan(
+	ctx context.Context,
+	log logr.Logger,
+	region string,
+	provider cloud.CloudProvider,
+	plan []cloud.Operation,
+) error {
 	for _, op := range plan {
 		switch op.Op {
 		case "CREATE":
@@ -114,7 +123,8 @@ func (r *CloudClusterReconciler) executePlan(ctx context.Context, log logr.Logge
 			}
 		case "UPDATE":
 			log.Info("updating cluster", "name", op.Name)
-			err := provider.UpdateCluster(ctx, cloud.ClusterID{Name: op.Name, Region: region}, op.Patch.(cloud.ClusterPatch))
+			id := cloud.ClusterID{Name: op.Name, Region: region}
+			err := provider.UpdateCluster(ctx, id, op.Patch.(cloud.ClusterPatch))
 			if err != nil {
 				return err
 			}
@@ -148,7 +158,9 @@ The `CloudProvider` interface defines 33 methods across nine resource types. The
 `GetCluster` always returns `Status: "ACTIVE"`. `CreateCluster` returns `Status: "CREATING"` but never transitions. `UpdateCluster` and `DeleteCluster` return `nil` immediately.
 
 ```go
-func (p *AWSProvider) GetCluster(ctx context.Context, id cloud.ClusterID) (*cloud.ClusterState, error) {
+func (p *AWSProvider) GetCluster(
+	ctx context.Context, id cloud.ClusterID,
+) (*cloud.ClusterState, error) {
 	return &cloud.ClusterState{
 		ID:     id.Name,
 		Name:   id.Name,
@@ -157,7 +169,9 @@ func (p *AWSProvider) GetCluster(ctx context.Context, id cloud.ClusterID) (*clou
 	}, nil
 }
 
-func (p *AWSProvider) CreateCluster(ctx context.Context, spec cloud.ClusterSpec) (*cloud.ClusterState, error) {
+func (p *AWSProvider) CreateCluster(
+	ctx context.Context, spec cloud.ClusterSpec,
+) (*cloud.ClusterState, error) {
 	return &cloud.ClusterState{
 		ID:           spec.Name,
 		Name:         spec.Name,
@@ -169,7 +183,9 @@ func (p *AWSProvider) CreateCluster(ctx context.Context, spec cloud.ClusterSpec)
 	}, nil
 }
 
-func (p *AWSProvider) UpdateCluster(ctx context.Context, id cloud.ClusterID, patch cloud.ClusterPatch) error {
+func (p *AWSProvider) UpdateCluster(
+	ctx context.Context, id cloud.ClusterID, patch cloud.ClusterPatch,
+) error {
 	return nil
 }
 
@@ -206,8 +222,10 @@ package cloudorch
 cost_threshold = 5000
 
 violation[msg] {
-    input.cluster.status.estimatedMonthlyCost > cost_threshold
-    msg := sprintf("Estimated monthly cost $%.2f exceeds threshold $%.2f", [input.cluster.status.estimatedMonthlyCost, cost_threshold])
+    cost := input.cluster.status.estimatedMonthlyCost
+    cost > cost_threshold
+    msg := sprintf("Monthly cost $%.2f exceeds threshold $%.2f",
+                   [cost, cost_threshold])
 }
 ```
 
@@ -383,7 +401,11 @@ The lesson: deployment artifacts are not the same as runtime behavior. A webhook
 The `setCondition` method in the reconciler updates the `Ready` and `Synced` boolean flags only when the reason is `Synced`.
 
 ```go
-func (r *CloudClusterReconciler) setCondition(ctx context.Context, cluster *computev1.CloudCluster, conditionType, reason, message string) (ctrl.Result, error) {
+func (r *CloudClusterReconciler) setCondition(
+	ctx context.Context,
+	cluster *computev1.CloudCluster,
+	conditionType, reason, message string,
+) (ctrl.Result, error) {
 	now := metav1.Now()
 	condition := metav1.Condition{
 		Type:               conditionType,
@@ -439,7 +461,12 @@ The `handleDeletion` method calls `provider.GetCluster` to check existence, call
 ![Finalizer stuck because IsNotFound is stringly typed](https://raw.githubusercontent.com/rowjay007/cloudorch/main/article/assets/png/diagrams/finalizer-loop.png)
 
 ```go
-func (r *CloudClusterReconciler) handleDeletion(ctx context.Context, log logr.Logger, cluster *computev1.CloudCluster, provider cloud.CloudProvider) (ctrl.Result, error) {
+func (r *CloudClusterReconciler) handleDeletion(
+	ctx context.Context,
+	log logr.Logger,
+	cluster *computev1.CloudCluster,
+	provider cloud.CloudProvider,
+) (ctrl.Result, error) {
 	clusterID := cloud.ClusterID{Name: cluster.Name, Region: cluster.Spec.Region}
 	_, err := provider.GetCluster(ctx, clusterID)
 	if err == nil {
@@ -524,39 +551,23 @@ type CloudProvider interface {
 	UpdateDatabase(ctx context.Context, id DatabaseID, patch DatabasePatch) error
 	DeleteDatabase(ctx context.Context, id DatabaseID) error
 
-	GetObjectStore(ctx context.Context, id ObjectStoreID) (*ObjectStoreState, error)
-	CreateObjectStore(ctx context.Context, spec ObjectStoreSpec) (*ObjectStoreState, error)
-	UpdateObjectStore(ctx context.Context, id ObjectStoreID, patch ObjectStorePatch) error
-	DeleteObjectStore(ctx context.Context, id ObjectStoreID) error
-
-	GetCacheCluster(ctx context.Context, id CacheClusterID) (*CacheClusterState, error)
-	CreateCacheCluster(ctx context.Context, spec CacheClusterSpec) (*CacheClusterState, error)
-	UpdateCacheCluster(ctx context.Context, id CacheClusterID, patch CacheClusterPatch) error
-	DeleteCacheCluster(ctx context.Context, id CacheClusterID) error
-
-	GetVirtualNetwork(ctx context.Context, id VirtualNetworkID) (*VirtualNetworkState, error)
-	CreateVirtualNetwork(ctx context.Context, spec VirtualNetworkSpec) (*VirtualNetworkState, error)
-	UpdateVirtualNetwork(ctx context.Context, id VirtualNetworkID, patch VirtualNetworkPatch) error
-	DeleteVirtualNetwork(ctx context.Context, id VirtualNetworkID) error
-
-	GetLoadBalancer(ctx context.Context, id LoadBalancerID) (*LoadBalancerState, error)
-	CreateLoadBalancer(ctx context.Context, spec LoadBalancerSpec) (*LoadBalancerState, error)
-	UpdateLoadBalancer(ctx context.Context, id LoadBalancerID, patch LoadBalancerPatch) error
-	DeleteLoadBalancer(ctx context.Context, id LoadBalancerID) error
-
-	GetDNSZone(ctx context.Context, id DNSZoneID) (*DNSZoneState, error)
-	CreateDNSZone(ctx context.Context, spec DNSZoneSpec) (*DNSZoneState, error)
-	UpdateDNSZone(ctx context.Context, id DNSZoneID, patch DNSZonePatch) error
-	DeleteDNSZone(ctx context.Context, id DNSZoneID) error
-
-	GetSecurityPolicy(ctx context.Context, id SecurityPolicyID) (*SecurityPolicyState, error)
-	CreateSecurityPolicy(ctx context.Context, spec SecurityPolicySpec) (*SecurityPolicyState, error)
-	UpdateSecurityPolicy(ctx context.Context, id SecurityPolicyID, patch SecurityPolicyPatch) error
-	DeleteSecurityPolicy(ctx context.Context, id SecurityPolicyID) error
-
 	EstimateMonthlyCost(ctx context.Context, resources []ResourceSpec) (*CostEstimate, error)
 }
 ```
+
+The same four-method pattern repeats for every remaining resource type, and only the first row is ever called.
+
+| Resource type | Methods | Called by the operator |
+|---------------|---------|------------------------|
+| Cluster | 4 | yes |
+| Database | 4 | no |
+| ObjectStore | 4 | no |
+| CacheCluster | 4 | no |
+| VirtualNetwork | 4 | no |
+| LoadBalancer | 4 | no |
+| DNSZone | 4 | no |
+| SecurityPolicy | 4 | no |
+| Cost estimation | 1 | no |
 
 This created a maintenance problem. When we added a new resource type to the interface, all three providers had to be updated with stub implementations or the code would not compile. The interface size scaled with the feature roadmap, not with the implemented feature set. The interface was a design document, not a production contract.
 
@@ -608,7 +619,10 @@ The lesson: deployment artifacts must be tested as a whole. The Helm chart, the 
 Despite these incidents, the structural decisions were correct. The finalizer pattern works as designed — the reconciler checks `DeletionTimestamp`, destroys the cloud resource, and removes the finalizer only after the cloud API confirms deletion. The level-triggered reconciler converges automatically after missed events or partial failures. The strategy-pattern provider interface allows pluggable cloud backends. The OPA policy engine evaluates rules in-process with low latency. The status subresource separates spec from observation.
 
 ```go
-func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CloudClusterReconciler) Reconcile(
+	ctx context.Context,
+	req ctrl.Request,
+) (ctrl.Result, error) {
 	log, _ := logr.FromContext(ctx)
 
 	var cluster computev1.CloudCluster
@@ -637,7 +651,8 @@ func (r *CloudClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 	if len(violations) > 0 {
-		return r.setCondition(ctx, &cluster, "Ready", "PolicyViolation", formatViolations(violations))
+		msg := formatViolations(violations)
+		return r.setCondition(ctx, &cluster, "Ready", "PolicyViolation", msg)
 	}
 
 	actual, err := provider.GetCluster(ctx, cloud.ClusterID{
